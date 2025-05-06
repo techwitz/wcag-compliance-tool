@@ -1,0 +1,242 @@
+/**
+ * build.gradle - Gradle configuration for WCAG 2.3 Compliance Tool
+ *
+ * This file provides the Gradle configuration needed to build, test,
+ * and package the WCAG 2.3 Compliance Tool for production use.
+ */
+
+plugins {
+    id 'java'
+    id 'application'
+    id 'maven-publish'
+    id 'com.github.johnrengelman.shadow' version '8.1.1' // For creating fat JAR
+    id 'checkstyle'
+    id 'jacoco' // Code coverage
+}
+
+group = 'com.company.accessibility'
+version = '1.0.0'
+sourceCompatibility = '21'
+targetCompatibility = '21'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    // Core dependencies
+    implementation 'org.jsoup:jsoup:1.20.1'                    // HTML parsing and manipulation
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.19.0'  // JSON handling
+    implementation 'org.apache.commons:commons-lang3:3.17.0'    // Utility functions
+    implementation 'org.apache.commons:commons-text:1.13.1'     // Text processing utilities
+    implementation 'commons-io:commons-io:2.19.0'               // IO utilities
+    implementation 'org.slf4j:slf4j-api:2.0.17'                 // Logging API
+    implementation 'ch.qos.logback:logback-classic:1.5.18'      // Logging implementation
+
+    // Optional dependencies for advanced features
+    implementation 'org.apache.pdfbox:pdfbox:3.0.5'           // PDF processing (optional)
+    implementation 'org.seleniumhq.selenium:selenium-java:4.32.0' // Web automation (optional)
+    implementation 'com.github.webdriverextensions:webdriverextensions:3.11.2' // Selenium extensions (optional)
+
+    // Testing dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.12.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.12.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.12.2'
+    testImplementation 'org.mockito:mockito-core:5.17.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.17.0'
+    testImplementation 'org.assertj:assertj-core:3.27.3'
+}
+
+application {
+    mainClass = 'com.techwitz.WcagComplianceApplication'
+}
+
+// JAR configuration
+jar {
+    manifest {
+        attributes (
+                'Main-Class': application.mainClass,
+                'Implementation-Title': project.name,
+                'Implementation-Version': project.version
+        )
+    }
+}
+
+// Fat JAR with all dependencies
+shadowJar {
+    archiveBaseName.set("wcag-compliance-tool")
+    archiveClassifier.set("all")
+    archiveVersion.set(project.version)
+}
+
+// Code style checks
+checkstyle {
+    toolVersion = '8.41'
+    configFile = file("${rootDir}/checkstyle/checkstyle.xml")
+}
+
+// Code coverage configuration
+jacoco {
+    toolVersion = "0.8.8"
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+test {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+// Project directory structure setup
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src/main/java']
+        }
+        resources {
+            srcDirs = ['src/main/resources']
+        }
+    }
+    test {
+        java {
+            srcDirs = ['src/test/java']
+        }
+        resources {
+            srcDirs = ['src/test/resources']
+        }
+    }
+}
+
+// Additional tasks for WCAG testing
+
+// Task to run WCAG compliance checks on a custom website
+task wcagCheck(type: JavaExec) {
+    description = 'Run WCAG compliance checks on a specified website'
+    group = 'verification'
+
+    mainClass = 'com.techwitz.accessibility.WcagComplianceApplication'
+    classpath = sourceSets.main.runtimeClasspath
+
+    // Default arguments if none provided
+    // args = ['--app-path', 'https://example.com', '--output-dir', 'wcag-reports']
+    def args = []
+
+    // Allow arguments to be passed via command line
+    // Usage: ./gradlew wcagCheck -Papp=https://example.com -Poutput=reports
+    if (project.hasProperty('app')) {
+        args.add('--app-path')
+        args.add(project.property('app'))
+    }
+
+    if (project.hasProperty('output')) {
+        args.add('--output-dir')
+        args.add(project.property('output'))
+    }
+    print("arguments: " + args)
+}
+
+// Maven publication configuration for potential distribution
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+
+            pom {
+                name = 'WCAG 2.3 Compliance Tool'
+                description = 'A Java-based tool for WCAG 2.3 compliance validation and remediation'
+                url = 'https://github.com/your-org/wcag-compliance-tool'
+
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'ajendra'
+                        name = 'Ajendra Singh'
+                        email = 'ajendra.singh@company.com'
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper task to create project directory structure
+task createDirs {
+    description = 'Creates the project directory structure'
+    group = 'build setup'
+
+    doLast {
+        sourceSets*.java.srcDirs*.each { it.mkdirs() }
+        sourceSets*.resources.srcDirs*.each { it.mkdirs() }
+
+        // Create directories for additional files
+        mkdir("${rootDir}/checkstyle")
+
+        // Create a basic checkstyle configuration if it doesn't exist
+        def checkstyleFile = file("${rootDir}/checkstyle/checkstyle.xml")
+        if (!checkstyleFile.exists()) {
+            checkstyleFile.text = '''<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+          "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+          "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<module name="Checker">
+    <property name="severity" value="warning"/>
+    <module name="TreeWalker">
+        <module name="JavadocMethod"/>
+        <module name="JavadocType"/>
+        <module name="JavadocVariable"/>
+        <module name="JavadocStyle"/>
+        <module name="ConstantName"/>
+        <module name="EmptyBlock"/>
+        <module name="EqualsHashCode"/>
+        <module name="IllegalImport"/>
+        <module name="MissingSwitchDefault"/>
+        <module name="ModifierOrder"/>
+    </module>
+</module>'''
+        }
+    }
+}
+
+// Add a settings.gradle file
+def settingsFile = file('settings.gradle')
+if (!settingsFile.exists()) {
+    settingsFile.text = '''rootProject.name = 'wcag-compliance-tool'
+'''
+}
+
+// Add a basic logback configuration
+def logbackFile = file('src/main/resources/logback.xml')
+if (!logbackFile.exists() && file('src/main/resources').exists()) {
+    logbackFile.text = '''<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>wcag-compliance-tool.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE" />
+    </root>
+</configuration>'''
+}
