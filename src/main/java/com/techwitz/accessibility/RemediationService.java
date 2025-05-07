@@ -7,12 +7,10 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 /**
  * Service for applying remediation to WCAG violations
@@ -22,6 +20,10 @@ public class RemediationService {
 
     private final ComplianceConfig config;
 
+    /**
+     * Constructor for the remediation service
+     * @param config Configuration for remediation
+     */
     public RemediationService(ComplianceConfig config) {
         this.config = config;
     }
@@ -36,72 +38,85 @@ public class RemediationService {
     public RemediationResult applyFixes(Document document,
                                         List<Violation> violations,
                                         RemediationOptions options) {
+        // Store original HTML for comparison
+        String originalHtml = document.outerHtml();
+
+        // If auto-fix is disabled, return result without changes
         if (!options.isAutoFix()) {
             return new RemediationResult.Builder()
                     .setPageUrl(document.baseUri())
-                    .setOriginalHtml(document.outerHtml())
-                    .setRemediatedHtml(document.outerHtml())
+                    .setOriginalHtml(originalHtml)
+                    .setRemediatedHtml(originalHtml)
                     .setViolations(violations)
                     .setFixesApplied(0)
                     .build();
         }
 
+        // Create a working copy to avoid modifying the original
         Document workingCopy = document.clone();
         List<String> changeLog = new ArrayList<>();
         int fixesApplied = 0;
 
-        // Group violations by rule ID
-        Map<String, List<Violation>> violationsByRule = violations.stream()
-                .collect(Collectors.groupingBy(Violation::getRuleId));
+        // Group violations by rule ID for more efficient processing
+        Map<String, List<Violation>> violationsByRuleId = violations.stream()
+                .collect(java.util.stream.Collectors.groupingBy(Violation::getRuleId));
 
-        // Get all rules from violation IDs
-        Map<String, WcagRule> ruleMap = new HashMap<>();
-        for (WcagRule rule : new WcagRuleEngine(config).getRules()) {
-            ruleMap.put(rule.getId(), rule);
-        }
+        // Create a rule engine to access all rules
+        WcagRuleEngine ruleEngine = new WcagRuleEngine(config);
 
-        // Apply fixes for each rule
-        for (Map.Entry<String, List<Violation>> entry : violationsByRule.entrySet()) {
-            String ruleId = entry.getKey();
-            List<Violation> ruleViolations = entry.getValue();
+        // Apply fixes for each rule that has violations
+        for (WcagRule rule : ruleEngine.getRules()) {
+            String ruleId = rule.getId();
+            List<Violation> ruleViolations = violationsByRuleId.get(ruleId);
 
-            WcagRule rule = ruleMap.get(ruleId);
-            if (rule != null && rule.canAutoFix()) {
-                try {
-                    int fixes = rule.applyFixes(workingCopy, ruleViolations);
-                    fixesApplied += fixes;
+            // Skip if no violations for this rule
+            if (ruleViolations == null || ruleViolations.isEmpty()) {
+                continue;
+            }
 
-                    if (fixes > 0) {
-                        changeLog.add("Applied " + fixes + " fixes for rule: " + rule.getDescription());
-                    }
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error applying fixes for rule " + ruleId, e);
-                    changeLog.add("Error fixing " + ruleId + ": " + e.getMessage());
+            // Skip if rule doesn't support auto-fix
+            if (!rule.canAutoFix()) {
+                continue;
+            }
+
+            try {
+                int ruleFixesApplied = rule.applyFixes(workingCopy, ruleViolations);
+                if (ruleFixesApplied > 0) {
+                    fixesApplied += ruleFixesApplied;
+                    changeLog.add(String.format("Applied %d fixes for rule: %s (%s)",
+                                                ruleFixesApplied, rule.getDescription(), rule.getId()));
+                    LOGGER.info(String.format("Applied %d fixes for rule: %s", ruleFixesApplied, rule.getId()));
                 }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error applying fixes for rule " + ruleId, e);
+                changeLog.add("Error fixing " + ruleId + ": " + e.getMessage());
             }
         }
 
         // Apply ARIA enhancements if requested
         if (options.isApplyAriaEnhancements()) {
             int ariaEnhancements = applyAriaEnhancements(workingCopy);
-            fixesApplied += ariaEnhancements;
             if (ariaEnhancements > 0) {
+                fixesApplied += ariaEnhancements;
                 changeLog.add("Applied " + ariaEnhancements + " ARIA enhancements");
+                LOGGER.info("Applied " + ariaEnhancements + " ARIA enhancements");
             }
         }
 
         // Fix contrast issues if requested
         if (options.isFixContrastIssues()) {
             int contrastFixes = fixContrastIssues(workingCopy);
-            fixesApplied += contrastFixes;
             if (contrastFixes > 0) {
+                fixesApplied += contrastFixes;
                 changeLog.add("Applied " + contrastFixes + " contrast fixes");
+                LOGGER.info("Applied " + contrastFixes + " contrast fixes");
             }
         }
 
+        // Create the result
         return new RemediationResult.Builder()
                 .setPageUrl(document.baseUri())
-                .setOriginalHtml(document.outerHtml())
+                .setOriginalHtml(originalHtml)
                 .setRemediatedHtml(workingCopy.outerHtml())
                 .setViolations(violations)
                 .setFixesApplied(fixesApplied)
@@ -135,11 +150,36 @@ public class RemediationService {
             }
         }
 
-        // Add appropriate roles to common components
+        // Add search landmarks
         Elements searchForms = document.select("form[action*=search], form[id*=search]");
         for (Element element : searchForms) {
             if (!element.hasAttr("role")) {
                 element.attr("role", "search");
+                enhancements++;
+            }
+        }
+
+        // Add appropriate roles to main sections
+        Elements headerElements = document.select("header, div.header, div#header");
+        for (Element element : headerElements) {
+            if (!element.hasAttr("role")) {
+                element.attr("role", "banner");
+                enhancements++;
+            }
+        }
+
+        Elements footerElements = document.select("footer, div.footer, div#footer");
+        for (Element element : footerElements) {
+            if (!element.hasAttr("role")) {
+                element.attr("role", "contentinfo");
+                enhancements++;
+            }
+        }
+
+        Elements asideElements = document.select("aside, div.sidebar, div#sidebar");
+        for (Element element : asideElements) {
+            if (!element.hasAttr("role")) {
+                element.attr("role", "complementary");
                 enhancements++;
             }
         }
@@ -160,6 +200,13 @@ public class RemediationService {
                 element.attr("aria-expanded", "false");
                 enhancements++;
             }
+        }
+
+        // Add language attribute if missing
+        Element html = document.selectFirst("html");
+        if (html != null && !html.hasAttr("lang")) {
+            html.attr("lang", "en"); // Default to English
+            enhancements++;
         }
 
         return enhancements;
@@ -187,7 +234,10 @@ public class RemediationService {
                             "button, .btn { color: #fff; background-color: #0056b3; }\n" +
                             ".btn-secondary { color: #fff; background-color: #6c757d; }\n" +
                             ".btn-danger { color: #fff; background-color: #dc3545; }\n" +
-                            ".btn-success { color: #fff; background-color: #28a745; }\n"
+                            ".btn-success { color: #fff; background-color: #28a745; }\n" +
+                            ".text-light { color: #333 !important; }\n" +  // Ensure light text is readable
+                            ".nav-link { color: #0056b3; }\n" +
+                            ".form-control:focus { border-color: #0056b3; box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25); }\n"
             );
             fixes++;
         }
