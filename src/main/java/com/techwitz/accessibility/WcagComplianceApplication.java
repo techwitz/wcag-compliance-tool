@@ -200,7 +200,7 @@ public class WcagComplianceApplication {
         String outputFilePath = null;
         if (applyFixes) {
             String fileName = getFileNameFromUrl(url);
-            outputFilePath = Paths.get(outputDir, "fixed_" + fileName).toString();
+            outputFilePath = Paths.get(outputDir, "fixed_" + fileName).toString() + ".html";
             options = new RemediationOptions.Builder(options)
                     .setSaveToPath(outputFilePath)
                     .build();
@@ -210,7 +210,7 @@ public class WcagComplianceApplication {
         RemediationResult result = complianceTool.remediatePage(url, options);
 
         // Generate report
-        String reportPath = Paths.get(outputDir, "report_" + getFileNameFromUrl(url)).toString();
+        String reportPath = Paths.get(outputDir, "report_" + getFileNameFromUrl(url)).toString() + ".html";
         generateHtmlReport(result, reportPath);
 
         // Print summary

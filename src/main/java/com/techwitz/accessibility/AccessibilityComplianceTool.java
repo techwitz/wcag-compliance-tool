@@ -17,7 +17,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Main entry point for the WCAG 2.3 Compliance Tool
+ * Main entry point for the WCAG 2.3 Compliance Tool.
  */
 public class AccessibilityComplianceTool {
     private static final Logger LOGGER = Logger.getLogger(AccessibilityComplianceTool.class.getName());

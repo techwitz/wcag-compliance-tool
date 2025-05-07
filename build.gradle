@@ -14,7 +14,7 @@ plugins {
     id 'jacoco' // Code coverage
 }
 
-group = 'com.company.accessibility'
+group = 'com.techwitz.accessibility'
 version = '1.0.0'
 sourceCompatibility = '21'
 targetCompatibility = '21'
@@ -49,7 +49,7 @@ dependencies {
 }
 
 application {
-    mainClass = 'com.techwitz.WcagComplianceApplication'
+    mainClass = 'com.techwitz.accessibility.WcagComplianceApplication'
 }
 
 // JAR configuration
@@ -65,7 +65,7 @@ jar {
 
 // Fat JAR with all dependencies
 shadowJar {
-    archiveBaseName.set("wcag-compliance-tool")
+    archiveBaseName.set("wcag-tool")
     archiveClassifier.set("all")
     archiveVersion.set(project.version)
 }
@@ -150,7 +150,7 @@ publishing {
             pom {
                 name = 'WCAG 2.3 Compliance Tool'
                 description = 'A Java-based tool for WCAG 2.3 compliance validation and remediation'
-                url = 'https://github.com/your-org/wcag-compliance-tool'
+                url = 'https://github.com/techwitz/wcag-compliance-tool.git'
 
                 licenses {
                     license {
